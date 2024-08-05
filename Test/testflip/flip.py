@@ -36,6 +36,17 @@ def handle_data(sender: int, data: bytearray):
     global last_command_time
     
     data_str = data.decode('utf-8').strip()
+    
+    # Check for flip command
+    if data_str == "flip":
+        logger.info("Flip command received!")
+        try:
+            tello.flip_forward()
+            logger.info("Tello executed flip")
+        except Exception as e:
+            logger.error(f"Failed to execute flip: {e}")
+        return
+    
     parts = data_str.split()
     if len(parts) != 4:
         logger.warning(f"Received invalid data: {data_str}")
@@ -84,11 +95,20 @@ async def connect_ble():
     for attempt in range(5):
         try:
             client = BleakClient(DEVICE_MAC_ADDRESS)
-            await client.connect(timeout=15.0)
+            logger.info(f"Attempting to connect (attempt {attempt + 1})...")
+            await client.connect(timeout=30.0)  # Increased timeout to 30 seconds
             logger.info(f"Connected to BLE device on attempt {attempt + 1}")
+            
+            # Add service discovery debug info
+            services = await client.get_services()
+            for service in services:
+                logger.debug(f"Service: {service.uuid}")
+                for char in service.characteristics:
+                    logger.debug(f"  Characteristic: {char.uuid}")
+            
             return client
         except Exception as e:
-            logger.error(f"Connection attempt {attempt + 1} failed: {e}")
+            logger.error(f"Connection attempt {attempt + 1} failed: {str(e)}")
             if attempt < 4:
                 logger.info("Retrying in 5 seconds...")
                 await asyncio.sleep(5)
@@ -128,12 +148,10 @@ async def main():
     try:
         characteristic = client.services.get_characteristic(CHARACTERISTIC_UUID)
         
-        await handle_take_off(client, characteristic)
-
-        #takeoff_success = await handle_take_off(client, characteristic)
-        #if not takeoff_success:
-         #   logger.error("Takeoff failed. Exiting.")
-         #   return
+        takeoff_success = await handle_take_off(client, characteristic)
+        if not takeoff_success:
+            logger.error("Takeoff failed. Exiting.")
+            return
 
         logger.info("Takeoff successful. Switching to continuous data mode.")
         
@@ -141,32 +159,17 @@ async def main():
         keep_alive_task = asyncio.create_task(keep_alive())
         start_time = time.time()
         
-        for attempt in range(5):
-            while time.time() - start_time < 1000:  # Fly for 200 seconds
-                try:
-                    await client.start_notify(CHARACTERISTIC_UUID, handle_data)
-                    logger.info("Listening for data...")
-                    await asyncio.sleep(200)  
-                    await client.stop_notify(CHARACTERISTIC_UUID)
-                    break
-                except Exception as e:
-                    logger.error(f"Error reading data: {e}")
-                    await asyncio.sleep(0.1)
-                    break
+        while time.time() - start_time < 200:  # Fly for 200 seconds
+            try:
+                data = await client.read_gatt_char(characteristic)
+                data_str = data.decode().strip()
+                handle_data(0, data)  # Use existing handle_data function
+            except Exception as e:
+                logger.error(f"Error reading data: {e}")
+                break
+            await asyncio.sleep(0.1)
         
         keep_alive_task.cancel()
-
-        #while time.time() - start_time < 1000:  # Fly for 200 seconds
-         #   try:
-          #      data = await client.read_gatt_char(characteristic)
-           #     data_str = data.decode().strip()
-            #    handle_data(0, data)  
-           # except Exception as e:
-            #    logger.error(f"Error reading data: {e}")
-             #   break
-           # await asyncio.sleep(0.1)
-        
-        #keep_alive_task.cancel()
                 
     except Exception as e:
         logger.error(f"An error occurred: {e}")
