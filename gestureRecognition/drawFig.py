@@ -22,8 +22,8 @@ def validate_and_convert_data(df):
     return df
 
 # Read the CSV file
-filename = "flip.csv"
-file_path = "/Users/amine/DroneGestureControl/" + filename
+filename = "flex.csv"
+file_path = "/Users/amine/Documents/Backupdrone/" + filename
 df = pd.read_csv(file_path)
 
 print("Original DataFrame info:")

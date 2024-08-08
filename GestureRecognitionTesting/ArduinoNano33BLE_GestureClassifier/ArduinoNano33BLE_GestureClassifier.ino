@@ -25,7 +25,7 @@
 
 #include <ArduTFLite.h>
 
-#include "model-3.h"
+#include "model-4.h"
 
 const float accelerationThreshold = 2.5; // Threshold (in G values) to detect a "gesture" start
 const int numSamples = 119; // Number of samples for a single gesture

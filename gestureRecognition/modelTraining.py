@@ -1,5 +1,5 @@
 # Setup environment
-# apt-get -qq install xxd
+# brew install vim
 # pip install pandas numpy matplotlib
 # pip install tensorflow==2.16.0-rc0
 # pip install --upgrade pandas-gbq google-auth-oauthlib tensorflow tf-keras
@@ -26,7 +26,7 @@ tf.random.set_seed(SEED)
 
 GESTURES = [
     "flip",
-    "flex",
+    "newFlex",
 ]
 
 SAMPLES_PER_GESTURE = 119
@@ -43,7 +43,7 @@ for gesture_index in range(NUM_GESTURES):
 
     output = ONE_HOT_ENCODED_GESTURES[gesture_index]
 
-    df = pd.read_csv("/Users/amine/DroneGestureControl/" + gesture + ".csv")
+    df = pd.read_csv("/Users/amine/Documents/Backupdrone/" + gesture + ".csv")
     num_recordings = int(df.shape[0] / SAMPLES_PER_GESTURE)
     print(f"\tThere are {num_recordings} recordings of the {gesture} gesture.")
 
@@ -204,3 +204,4 @@ plt.show()
 # basic_model_size = os.path.getsize("gesture_model.tflite")
 # print("Model is %d bytes" % basic_model_size)
 
+#check out the collablink to get converted header files
