@@ -204,4 +204,5 @@ plt.show()
 # basic_model_size = os.path.getsize("gesture_model.tflite")
 # print("Model is %d bytes" % basic_model_size)
 
-#check out the collablink to get converted header files
+#check out the collablink to get converted header files: 
+#https://colab.research.google.com/drive/1Jj_LjUFtrzhLT6QaVmfLupGtPSITQi5Q#scrollTo=9J33uwpNtAku
