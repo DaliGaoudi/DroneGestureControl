@@ -1,1 +1,2 @@
 # DroneGestureControl
+This project, developed for the Embedded Systems, Cyber-Physical Systems, and Robotics course at the Technical University of Munich, focuses on creating a gesture-based controller for a drone. The primary objective was to enhance and build upon a sensor's capabilities to accurately detect and interpret various hand movements. By integrating this sensor data with the drone's existing tracking and movement framework, we successfully established a seamless communication system that allows the drone to be controlled through intuitive gestures.
