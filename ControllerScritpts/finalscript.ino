@@ -31,6 +31,9 @@ BLEService sensorService("180C");
 BLECharacteristic sensorCharacteristic("2A56", BLERead | BLENotify | BLEWrite, 30);
 
 void setup() {
+  pinMode(LEDR, OUTPUT);
+  pinMode(LEDG, OUTPUT);
+  pinMode(LEDB, OUTPUT);
   Serial.begin(9600);
   while (!Serial);
 
@@ -54,9 +57,17 @@ void setup() {
   Serial.println("IMU initialized.");
   calibrateBaseline();
   Serial.println("Calibration complete!");
-
+  //red
+  digitalWrite(LEDR, LOW);
+  digitalWrite(LEDG, HIGH);
+  digitalWrite(LEDB, HIGH);
+  //
   if (!modelInit(model, tensorArena, tensorArenaSize)){
     Serial.println("Model initialization failed!");
+    //white
+    digitalWrite(LEDR, LOW);
+    digitalWrite(LEDG, LOW);
+    digitalWrite(LEDB, LOW);
     while(true);
   }
 }
@@ -67,13 +78,21 @@ void loop() {
   if (central) {
     Serial.print("Connected to central: ");
     Serial.println(central.address());
-    
+      // BLUE
+    digitalWrite(LEDR, HIGH);
+    digitalWrite(LEDG, HIGH);
+    digitalWrite(LEDB, LOW);
+
     while (central.connected()) {
       if (!takeoffDetected) {
         if (recognizeGesture()) {
           takeoffDetected = true;
           sensorCharacteristic.writeValue("flex");
           Serial.println("Take-off gesture detected! Waiting for confirmation...");
+          // CYAN
+          digitalWrite(LEDR, HIGH);
+          digitalWrite(LEDG, LOW);
+          digitalWrite(LEDB, LOW);
         }
       } else if (!takeoffConfirmed) {
         // Wait for confirmation from Python script
@@ -86,6 +105,10 @@ void loop() {
           if (value == "takeoff_confirmed") {
             takeoffConfirmed = true;
             Serial.println("Takeoff confirmed. Starting continuous data stream.");
+              // GREEN
+            digitalWrite(LEDR, HIGH);
+            digitalWrite(LEDG, LOW);
+            digitalWrite(LEDB, HIGH);
           }
         }
       } else {
@@ -97,6 +120,10 @@ void loop() {
 
     Serial.print("Disconnected from central: ");
     Serial.println(central.address());
+    // RGB OFF
+    digitalWrite(LEDR, HIGH);
+    digitalWrite(LEDG, HIGH);
+    digitalWrite(LEDB, HIGH);
     takeoffDetected = false;
     takeoffConfirmed = false;
     BLE.advertise();  // Start advertising again
@@ -189,7 +216,7 @@ void updateAndSendData() {
     IMU.readAcceleration(x, y, z);
     
     roll = atan2(y, z) * 180.0 / PI;
-    pitch = atan2(-x, sqrt(y * y + z * z)) * 180.0 / PI;
+    pitch = atan2(x, sqrt(y * y + z * z)) * 180.0 / PI;
     delta_y = y - baseline_y;
   }
   
@@ -198,7 +225,7 @@ void updateAndSendData() {
     
     yaw += z * sensitivity;
     
-    if (yaw > 180) yaw -= 360;
+    if (yaw > 180) yaw = 360;
     if (yaw < -180) yaw += 360;
   }
 

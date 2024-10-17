@@ -15,4 +15,4 @@ if __name__ == "__main__":
     asyncio.run(scan_ble_devices())
     
 
-#2DE737D7-89B3-F883-652A-F8F42578F76C
+#148D5A3A-144E-0CAE-E6A6-A3F1DFEEE8EF

@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 logger = logging.getLogger(__name__)
 
 # Bluetooth setup
-DEVICE_MAC_ADDRESS = "2DE737D7-89B3-F883-652A-F8F42578F76C"  # Replace with your device's MAC address
+DEVICE_MAC_ADDRESS = "148D5A3A-144E-0CAE-E6A6-A3F1DFEEE8EF"  # Replace with your device's MAC address
 CHARACTERISTIC_UUID = "2A56"  # UUID for the characteristic
 
 # Initialize Tello
@@ -65,7 +65,7 @@ def handle_data(sender: int, data: bytearray):
 
     # Send control commands to Tello
     try:
-        tello.send_rc_control(roll_cmd , pitch_cmd, int(vertical_cmd / 2), yaw_cmd)
+        tello.send_rc_control(int(vertical_cmd / 2) , pitch_cmd, roll_cmd, yaw_cmd)
         last_command_time = time.time()
     except Exception as e:
         logger.error(f"Failed to send RC control: {e}")
