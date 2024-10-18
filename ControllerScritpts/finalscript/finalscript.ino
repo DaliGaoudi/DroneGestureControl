@@ -19,6 +19,9 @@ alignas(16) byte tensorArena[tensorArenaSize];
 
 bool takeoffDetected = false;
 bool takeoffConfirmed = false;
+bool flying = false;
+bool landingDetected = false;
+bool landingConfirmed = false;
 
 const char* GESTURES[] = {
   "flip",
@@ -105,6 +108,7 @@ void loop() {
           if (value == "takeoff_confirmed") {
             takeoffConfirmed = true;
             Serial.println("Takeoff confirmed. Starting continuous data stream.");
+            flying = true;
               // GREEN
             digitalWrite(LEDR, HIGH);
             digitalWrite(LEDG, LOW);
@@ -114,6 +118,8 @@ void loop() {
       } else {
         delay(20);
         updateAndSendData();
+        Serial.println(flying);
+        checkLanding();
       }
       delay(10);  // Small delay to prevent tight looping
     }
@@ -208,6 +214,39 @@ void calibrateBaseline() {
   Serial.println(baseline_y);
 }
 
+void checkLanding() {
+      if (!landingDetected) {
+        if (recognizeGesture()) {
+          landingDetected = true;
+          sensorCharacteristic.writeValue("flex");
+          Serial.println("Landing gesture detected! Waiting for confirmation...");
+          // CYAN
+          digitalWrite(LEDR, HIGH);
+          digitalWrite(LEDG, LOW);
+          digitalWrite(LEDB, LOW);
+        }
+      } else if (!landingConfirmed) {
+        // Wait for confirmation from Python script
+        if (sensorCharacteristic.written()) {
+          uint8_t buffer[30];
+          int bytesRead = sensorCharacteristic.readValue(buffer, sizeof(buffer));
+          String value(buffer, bytesRead);
+          Serial.print("Received value: ");
+          Serial.println(value);
+          if (value == "landing_confirmed") {
+            takeoffConfirmed = true;
+            Serial.println("landing confirmed. Waiting for futher commands");
+            flying = false;
+              // GREEN
+            digitalWrite(LEDR, HIGH);
+            digitalWrite(LEDG, LOW);
+            digitalWrite(LEDB, HIGH);
+          }
+        }
+      }   
+}
+
+
 void updateAndSendData() {
   float x, y, z;
   float delta_y;
@@ -227,9 +266,10 @@ void updateAndSendData() {
     
     if (yaw > 180) yaw = 360;
     if (yaw < -180) yaw += 360;
+
   }
 
-  String data = String(roll) + " " + String(pitch) + " " + String(yaw) + " " + String(delta_y);
-  sensorCharacteristic.writeValue(data.c_str());
-  Serial.println(data);  // Debug print
-}
+    String data = String(roll) + " " + String(pitch) + " " + String(yaw) + " " + String(delta_y);
+    sensorCharacteristic.writeValue(data.c_str());
+    Serial.println(data);  // Debug print
+    }

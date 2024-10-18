@@ -9,8 +9,10 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 logger = logging.getLogger(__name__)
 
 # Bluetooth setup
-DEVICE_MAC_ADDRESS = "148D5A3A-144E-0CAE-E6A6-A3F1DFEEE8EF"  # Replace with your device's MAC address
+DEVICE_MAC_ADDRESS = "7D:77:C9:FE:ED:4E"  # Replace with your device's MAC address
 CHARACTERISTIC_UUID = "2A56"  # UUID for the characteristic
+
+flying = False
 
 # Initialize Tello
 tello = Tello()
@@ -70,6 +72,28 @@ def handle_data(sender: int, data: bytearray):
     except Exception as e:
         logger.error(f"Failed to send RC control: {e}")
 
+
+async def handle_landing(client,characteristic):
+    try:
+        data = await client.read_gatt_char(characteristic)
+        data_str = data.decode().strip()
+        logger.debug(f"Received data: {data_str}")
+            
+        if data_str == "flex":
+            logger.info("Landing gesture detected!")
+            try:
+                tello.land()
+                logger.info("Tello is landing")
+                await client.write_gatt_char(characteristic, "landing_confirmed".encode())
+                logger.info("Sent landing confirmation")
+                return True
+            except Exception as e:
+                logger.error(f"Landing failed: {e}")
+                return False
+    except Exception as e:
+            logger.error(f"Error reading characteristic: {e}")
+            return False
+
 async def keep_alive():
     while True:
         if time.time() - last_command_time > 5:
@@ -111,6 +135,7 @@ async def handle_take_off(client, characteristic):
                     logger.info("Tello took off")
                     await client.write_gatt_char(characteristic, "takeoff_confirmed".encode())
                     logger.info("Sent takeoff confirmation")
+                    flying = True
                     return True
                 except Exception as e:
                     logger.error(f"Takeoff failed: {e}")
@@ -174,6 +199,11 @@ async def main():
 
         await client.start_notify(CHARACTERISTIC_UUID, handle_data)
         logger.info("Listening for data...")
+        if flying:
+            landing_success = await handle_landing(client, characteristic)
+            if not landing_success:
+                logger.error("Landing failed, what do i do ?????")
+            
 
         try:
             while time.time() - start_time < 200:  # Fly for 200 seconds
