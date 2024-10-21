@@ -95,7 +95,7 @@ void loop() {
       Serial.println("Waiting for next command");
       if (!takeoffDetected) {
         Serial.println("1");
-        if (true) {
+        if (recognizeGesture()) {
           takeoffDetected = true;
           if(sensorCharacteristic.writeValue("flex")) {
             Serial.println("Take-off gesture detected! Waiting for confirmation...");
