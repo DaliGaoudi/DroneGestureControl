@@ -86,6 +86,7 @@ async def handle_landing(client,characteristic):
                 logger.info("Tello is landing")
                 await client.write_gatt_char(characteristic, "landing_confirmed".encode())
                 logger.info("Sent landing confirmation")
+                flying = False
                 return True
             except Exception as e:
                 logger.error(f"Landing failed: {e}")
@@ -140,6 +141,17 @@ async def handle_take_off(client, characteristic):
                 except Exception as e:
                     logger.error(f"Takeoff failed: {e}")
                     return False
+            elif data_str == "wrong":
+                logger.info("Received wrong gesture")
+                try:
+                    logger.info("Sending confirmation for wrong Gesture")
+                    await client.write_gatt_char(characteristic, "wrong_confirmed".encode())
+                    logger.info("Sent wrong confirmation")
+                    continue
+                except Exception as e:
+                    logger.error(f"failed gesture: {e}")
+                    return False
+
         except Exception as e:
             logger.error(f"Error reading characteristic: {e}")
             return False
@@ -188,10 +200,9 @@ async def main():
         characteristic = client.services.get_characteristic(CHARACTERISTIC_UUID)
         
         takeoff_success = await handle_take_off(client, characteristic)
-        if not takeoff_success:
-            logger.error("Takeoff failed. Exiting.")
-            return
-
+        while not takeoff_success:
+            logger.error("Takeoff failed.")
+            
         logger.info("Takeoff successful. Switching to continuous data mode.")
         
         keep_alive_task = asyncio.create_task(keep_alive())

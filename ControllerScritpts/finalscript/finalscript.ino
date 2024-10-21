@@ -8,11 +8,11 @@ const float sensitivity = 0.1;
 const float threshold = 0.2;
 float baseline_y = 0;
 
-const float accelerationThreshold = 2.5; 
-const int numSamples = 119; 
+const float accelerationThreshold = 2.5;
+const int numSamples = 119;
 
 int samplesRead = 0;
-const int inputLength = 714; 
+const int inputLength = 714;
 
 constexpr int tensorArenaSize = 8 * 1024;
 alignas(16) byte tensorArena[tensorArenaSize];
@@ -22,6 +22,7 @@ bool takeoffConfirmed = false;
 bool flying = false;
 bool landingDetected = false;
 bool landingConfirmed = false;
+bool sendData = false;
 
 const char* GESTURES[] = {
   "flip",
@@ -38,11 +39,13 @@ void setup() {
   pinMode(LEDG, OUTPUT);
   pinMode(LEDB, OUTPUT);
   Serial.begin(9600);
-  while (!Serial);
+  while (!Serial)
+    ;
 
   if (!BLE.begin()) {
     Serial.println("Starting BLE failed!");
-    while (1);
+    while (1)
+      ;
   }
 
   BLE.setLocalName("Nano33BLESense");
@@ -55,7 +58,8 @@ void setup() {
 
   if (!IMU.begin()) {
     Serial.println("Failed to initialize IMU!");
-    while (1);
+    while (1)
+      ;
   }
   Serial.println("IMU initialized.");
   calibrateBaseline();
@@ -65,13 +69,14 @@ void setup() {
   digitalWrite(LEDG, HIGH);
   digitalWrite(LEDB, HIGH);
   //
-  if (!modelInit(model, tensorArena, tensorArenaSize)){
+  if (!modelInit(model, tensorArena, tensorArenaSize)) {
     Serial.println("Model initialization failed!");
     //white
     digitalWrite(LEDR, LOW);
     digitalWrite(LEDG, LOW);
     digitalWrite(LEDB, LOW);
-    while(true);
+    while (true)
+      ;
   }
 }
 
@@ -81,21 +86,46 @@ void loop() {
   if (central) {
     Serial.print("Connected to central: ");
     Serial.println(central.address());
-      // BLUE
+    // BLUE
     digitalWrite(LEDR, HIGH);
     digitalWrite(LEDG, HIGH);
     digitalWrite(LEDB, LOW);
 
     while (central.connected()) {
+      Serial.println("Waiting for next command");
       if (!takeoffDetected) {
-        if (recognizeGesture()) {
+        Serial.println("1");
+        if (true) {
           takeoffDetected = true;
-          sensorCharacteristic.writeValue("flex");
-          Serial.println("Take-off gesture detected! Waiting for confirmation...");
+          if(sensorCharacteristic.writeValue("flex")) {
+            Serial.println("Take-off gesture detected! Waiting for confirmation...");
+            delay(100);
+          } else {
+            Serial.println("Failed to send Signal 1");
+          }
           // CYAN
           digitalWrite(LEDR, HIGH);
           digitalWrite(LEDG, LOW);
           digitalWrite(LEDB, LOW);
+        } else {
+          if(sensorCharacteristic.writeValue("wrong")) {
+              Serial.println("Wrong Gesture sent");
+              uint8_t buffer[30];
+              int bytesRead = sensorCharacteristic.readValue(buffer, sizeof(buffer));
+              String value(buffer, bytesRead);
+              Serial.print("Received value: ");
+              Serial.println(value);
+              if (value == "wrong_confirmed") {
+                Serial.println("received confirmation for wrong Gesture");
+              }
+              delay(500);
+            } else {
+              Serial.println("Failed to send signal 2");
+            }
+            
+          digitalWrite(LEDR, LOW);
+          digitalWrite(LEDG, LOW);
+          digitalWrite(LEDB, HIGH);
         }
       } else if (!takeoffConfirmed) {
         // Wait for confirmation from Python script
@@ -109,17 +139,21 @@ void loop() {
             takeoffConfirmed = true;
             Serial.println("Takeoff confirmed. Starting continuous data stream.");
             flying = true;
-              // GREEN
+            sendData = true;
+            // GREEN
             digitalWrite(LEDR, HIGH);
             digitalWrite(LEDG, LOW);
             digitalWrite(LEDB, HIGH);
           }
         }
       } else {
-        delay(20);
-        updateAndSendData();
-        Serial.println(flying);
-        checkLanding();
+        delay(200);
+        if (flying) {
+          checkLanding();
+          if (sendData) {
+            updateAndSendData();
+            }  
+          }
       }
       delay(10);  // Small delay to prevent tight looping
     }
@@ -132,8 +166,7 @@ void loop() {
     digitalWrite(LEDB, HIGH);
     takeoffDetected = false;
     takeoffConfirmed = false;
-    BLE.advertise();  // Start advertising again
-  }
+  } 
 }
 
 bool recognizeFlip() {
@@ -143,6 +176,8 @@ bool recognizeFlip() {
 bool recognizeGesture() {
   float aX, aY, aZ, gX, gY, gZ;
 
+  Serial.println("Detecting Gesture....");
+
   // wait for significant movement
   while (samplesRead == 0) {
     if (IMU.accelerationAvailable()) {
@@ -150,12 +185,15 @@ bool recognizeGesture() {
       float aSum = fabs(aX) + fabs(aY) + fabs(aZ);
       if (aSum >= accelerationThreshold) {
         break;
+      } else {
+        Serial.println("too much acceleration");
       }
     }
   }
 
   while (samplesRead < numSamples) {
     if (IMU.accelerationAvailable() && IMU.gyroscopeAvailable()) {
+      Serial.println("got acceleration and gyroscope data");
       IMU.readAcceleration(aX, aY, aZ);
       IMU.readGyroscope(gX, gY, gZ);
 
@@ -165,41 +203,47 @@ bool recognizeGesture() {
       gX = (gX + 2000.0) / 4000.0;
       gY = (gY + 2000.0) / 4000.0;
       gZ = (gZ + 2000.0) / 4000.0;
-      
+
       modelSetInput(aX, samplesRead * 6 + 0);
       modelSetInput(aY, samplesRead * 6 + 1);
-      modelSetInput(aZ, samplesRead * 6 + 2); 
+      modelSetInput(aZ, samplesRead * 6 + 2);
       modelSetInput(gX, samplesRead * 6 + 3);
       modelSetInput(gY, samplesRead * 6 + 4);
-      modelSetInput(gZ, samplesRead * 6 + 5); 
-      
+      modelSetInput(gZ, samplesRead * 6 + 5);
+
       samplesRead++;
-      
+
       if (samplesRead == numSamples) {
-        if(!modelRunInference()){
+        if (!modelRunInference()) {
           Serial.println("RunInference Failed!");
           samplesRead = 0;
           return false;
         }
 
-        if (modelGetOutput(1) * 100 > 90) {
+        if (modelGetOutput(1) * 100 > 60) {
           samplesRead = 0;
+          Serial.println("Read flex");
           return true;
+        } else {
+          Serial.println("Wrong Gesture");
+          return false;
         }
 
         samplesRead = 0;
         return false;
       }
+    } else {
+      Serial.println("Could not get accel or gyro");
     }
   }
-  
+
   return false;
 }
 
 void calibrateBaseline() {
   float sum_y = 0;
   int samples = 100;
-  
+
   for (int i = 0; i < samples; i++) {
     float x, y, z;
     if (IMU.accelerationAvailable()) {
@@ -208,68 +252,80 @@ void calibrateBaseline() {
     }
     delay(10);
   }
-  
+
   baseline_y = sum_y / samples;
   Serial.print("Baseline Y: ");
   Serial.println(baseline_y);
 }
 
 void checkLanding() {
-      if (!landingDetected) {
-        if (recognizeGesture()) {
-          landingDetected = true;
-          sensorCharacteristic.writeValue("flex");
-          Serial.println("Landing gesture detected! Waiting for confirmation...");
-          // CYAN
+  float aX, aY, aZ;
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(aX, aY, aZ);
+    float totalAcceleration = sqrt(aX * aX + aY * aY + aZ * aZ);
+
+    Serial.println(totalAcceleration);
+
+    if (!landingDetected && (accelerationThreshold < totalAcceleration)) {
+      if (recognizeGesture()) {
+        landingDetected = true;
+        sendData = false;
+        sensorCharacteristic.writeValue("flex");
+        Serial.println("Landing gesture detected! Waiting for confirmation...");
+        // CYAN
+        digitalWrite(LEDR, HIGH);
+        digitalWrite(LEDG, HIGH);
+        digitalWrite(LEDB, LOW);
+      }
+
+    } else if (!landingConfirmed) {
+      // Wait for confirmation from Python script
+      if (sensorCharacteristic.written()) {
+        uint8_t buffer[30];
+        int bytesRead = sensorCharacteristic.readValue(buffer, sizeof(buffer));
+        String value(buffer, bytesRead);
+        Serial.print("Received value: ");
+        Serial.println(value);
+        if (value == "landing_confirmed") {
+          takeoffConfirmed = true;
+          Serial.println("landing confirmed. Waiting for futher commands");
+          flying = false;
+          // GREEN
           digitalWrite(LEDR, HIGH);
           digitalWrite(LEDG, LOW);
-          digitalWrite(LEDB, LOW);
+          digitalWrite(LEDB, HIGH);
         }
-      } else if (!landingConfirmed) {
-        // Wait for confirmation from Python script
-        if (sensorCharacteristic.written()) {
-          uint8_t buffer[30];
-          int bytesRead = sensorCharacteristic.readValue(buffer, sizeof(buffer));
-          String value(buffer, bytesRead);
-          Serial.print("Received value: ");
-          Serial.println(value);
-          if (value == "landing_confirmed") {
-            takeoffConfirmed = true;
-            Serial.println("landing confirmed. Waiting for futher commands");
-            flying = false;
-              // GREEN
-            digitalWrite(LEDR, HIGH);
-            digitalWrite(LEDG, LOW);
-            digitalWrite(LEDB, HIGH);
-          }
-        }
-      }   
+      }
+    }
+  }
 }
 
-
 void updateAndSendData() {
+  float aX, aY, aZ;
+
   float x, y, z;
   float delta_y;
 
   if (IMU.accelerationAvailable()) {
     IMU.readAcceleration(x, y, z);
-    
-    roll = atan2(y, z) * 180.0 / PI;
-    pitch = atan2(x, sqrt(y * y + z * z)) * 180.0 / PI;
-    delta_y = y - baseline_y;
-  }
-  
-  if (IMU.gyroscopeAvailable()) {
-    IMU.readGyroscope(x, y, z);
-    
-    yaw += z * sensitivity;
-    
-    if (yaw > 180) yaw = 360;
-    if (yaw < -180) yaw += 360;
+    float totalAcceleration = sqrt(x * x + y * y + z * z);
+    if (totalAcceleration < accelerationThreshold) {
+      roll = atan2(y, z) * 180.0 / PI;
+      pitch = atan2(x, sqrt(y * y + z * z)) * 180.0 / PI;
+      delta_y = y - baseline_y;
 
-  }
+      if (IMU.gyroscopeAvailable()) {
+        IMU.readGyroscope(x, y, z);
 
-    String data = String(roll) + " " + String(pitch) + " " + String(yaw) + " " + String(delta_y);
-    sensorCharacteristic.writeValue(data.c_str());
-    Serial.println(data);  // Debug print
+        yaw += z * sensitivity;
+
+        if (yaw > 180) yaw = 360;
+        if (yaw < -180) yaw += 360;
+      }
+
+      String data = String(roll) + " " + String(pitch) + " " + String(yaw) + " " + String(delta_y);
+      sensorCharacteristic.writeValue(data.c_str());
+      Serial.println(data);  // Debug print
     }
+  }
+}
