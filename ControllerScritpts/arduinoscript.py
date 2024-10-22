@@ -13,6 +13,7 @@ DEVICE_MAC_ADDRESS = "7D:77:C9:FE:ED:4E"  # Replace with your device's MAC addre
 CHARACTERISTIC_UUID = "2A56"  # UUID for the characteristic
 
 flying = False
+sendData = False
 
 # Initialize Tello
 tello = Tello()
@@ -35,10 +36,21 @@ def apply_deadzone(value, deadzone):
 last_command_time = time.time()
 
 def handle_data(sender: int, data: bytearray):
-    global last_command_time
+    global last_command_time, flying, sendData
+    print(sendData, "In data handle")
+    print(flying, "In data handle")
+    if sendData == False:
+        return
     
+
     data_str = data.decode('utf-8').strip()
     parts = data_str.split()
+
+    if data_str == "flex":
+        logger.warning("Received landing signal 'flex' in control data.")
+        sendData = False
+        return
+               
     if len(parts) != 4:
         logger.warning(f"Received invalid data: {data_str}")
         return
@@ -74,26 +86,42 @@ def handle_data(sender: int, data: bytearray):
 
 
 async def handle_landing(client,characteristic):
-    try:
-        data = await client.read_gatt_char(characteristic)
-        data_str = data.decode().strip()
-        logger.debug(f"Received data: {data_str}")
-            
-        if data_str == "flex":
-            logger.info("Landing gesture detected!")
-            try:
-                tello.land()
-                logger.info("Tello is landing")
-                await client.write_gatt_char(characteristic, "landing_confirmed".encode())
-                logger.info("Sent landing confirmation")
-                flying = False
-                return True
-            except Exception as e:
-                logger.error(f"Landing failed: {e}")
-                return False
-    except Exception as e:
+    global flying,sendData  
+
+    logger.info("Waiting for landing gesture...")
+
+    while flying:  
+        try:
+            data = await client.read_gatt_char(characteristic)
+            data_str = data.decode().strip()
+            logger.debug(f"Received data: {data_str}")
+
+            if data_str == "flex":
+                logger.info("Landing gesture detected!")
+                
+                try:
+                    tello.land()
+                    logger.info("Tello is landing")
+                    await client.write_gatt_char(characteristic, "landing_confirmed".encode())
+                    logger.info("Sent landing confirmation")
+                    flying = False  
+                    sendData = False
+                    print(sendData, "in landing")
+                    print(flying, "in landing")
+
+                    await client.stop_notify(CHARACTERISTIC_UUID)
+                    logger.info("Stopped listening for data after landing.")
+                    if client.is_connected():
+                        await client.disconnect()
+                    return True
+                except Exception as e:
+                    logger.error(f"Landing failed: {e}")
+                    return False
+
+        except Exception as e:
             logger.error(f"Error reading characteristic: {e}")
             return False
+        await asyncio.sleep(0.1) 
 
 async def keep_alive():
     while True:
@@ -122,6 +150,8 @@ async def connect_ble():
     return None
 
 async def handle_take_off(client, characteristic):
+    global sendData, flying
+
     logger.info("Waiting for take-off gesture...")
     while True:
         try:
@@ -137,6 +167,9 @@ async def handle_take_off(client, characteristic):
                     await client.write_gatt_char(characteristic, "takeoff_confirmed".encode())
                     logger.info("Sent takeoff confirmation")
                     flying = True
+                    sendData = True
+                    print(sendData,"While take off")
+                    print(flying,"While take off")
                     return True
                 except Exception as e:
                     logger.error(f"Takeoff failed: {e}")
@@ -147,7 +180,8 @@ async def handle_take_off(client, characteristic):
                     logger.info("Sending confirmation for wrong Gesture")
                     await client.write_gatt_char(characteristic, "wrong_confirmed".encode())
                     logger.info("Sent wrong confirmation")
-                    continue
+                       
+                    return False
                 except Exception as e:
                     logger.error(f"failed gesture: {e}")
                     return False
@@ -195,59 +229,62 @@ async def main():
     client = await connect_ble()
     if not client:
         return
-
-    try:
-        characteristic = client.services.get_characteristic(CHARACTERISTIC_UUID)
-        
-        takeoff_success = await handle_take_off(client, characteristic)
-        while not takeoff_success:
-            logger.error("Takeoff failed.")
-            
-        logger.info("Takeoff successful. Switching to continuous data mode.")
-        
-        keep_alive_task = asyncio.create_task(keep_alive())
-        start_time = time.time()
-
-        await client.start_notify(CHARACTERISTIC_UUID, handle_data)
-        logger.info("Listening for data...")
-        if flying:
-            landing_success = await handle_landing(client, characteristic)
-            if not landing_success:
-                logger.error("Landing failed, what do i do ?????")
-            
-
+    while True: 
         try:
-            while time.time() - start_time < 200:  # Fly for 200 seconds
-                if not client.is_connected:
-                    logger.warning("BLE connection lost. Attempting to reconnect...")
-                    try:
-                        await client.connect(timeout=10.0)
-                        logger.info("Reconnected to BLE device")
-                        await client.start_notify(CHARACTERISTIC_UUID, handle_data)
-                    except Exception as e:
-                        logger.error(f"Failed to reconnect: {e}")
-                        break
-                await asyncio.sleep(1)  # Check connection every second
-        except asyncio.CancelledError:
-            logger.info("Flight time ended or interrupted.")
-        finally:
-            if client.is_connected:
-                await client.stop_notify(CHARACTERISTIC_UUID)
-            logger.info("Stopped listening for data.")
+            characteristic = client.services.get_characteristic(CHARACTERISTIC_UUID)
+            
+            takeoff_success = await handle_take_off(client, characteristic)
+            while not takeoff_success:
+                logger.error("Takeoff failed.")
+                
+            logger.info("Takeoff successful. Switching to continuous data mode.")
+            
+            #keep_alive_task = asyncio.create_task(keep_alive())
+            start_time = time.time()
 
-        keep_alive_task.cancel()
-        await asyncio.sleep(0.5)  # Allow time for the keep_alive task to cancel
+            await client.start_notify(CHARACTERISTIC_UUID, handle_data)
+            logger.info("Listening for data...")
 
-    except Exception as e:
-        logger.error(f"An error occurred in the main loop: {e}")
-    finally:
-        try:
-            tello.land()
-            logger.info("Tello landing command sent")
-            # Wait for the landing to complete
-            await asyncio.sleep(5)
+            while flying:
+                landing_success = await handle_landing(client, characteristic)
+                if not landing_success:
+                    logger.error("Landing failed, what do i do ?????")
+                    break
+                await asyncio.sleep(0.1)
+                
+                
+            try:
+                while time.time() - start_time < 200:  # Fly for 200 seconds
+                    if not client.is_connected:
+                        logger.warning("BLE connection lost. Attempting to reconnect...")
+                        try:
+                            await client.connect(timeout=10.0)
+                            logger.info("Reconnected to BLE device")
+                            await client.start_notify(CHARACTERISTIC_UUID, handle_data)
+                        except Exception as e:
+                            logger.error(f"Failed to reconnect: {e}")
+                            break
+                    await asyncio.sleep(1)  # Check connection every second
+            except asyncio.CancelledError:
+                logger.info("Flight time ended or interrupted.")
+            finally:
+                if client.is_connected:
+                    await client.stop_notify(CHARACTERISTIC_UUID)
+                logger.info("Stopped listening for data.")
+
+            #keep_alive_task.cancel()
+            await asyncio.sleep(0.5)  # Allow time for the keep_alive task to cancel
+
         except Exception as e:
-            logger.error(f"Landing failed: {e}")
+            logger.error(f"An error occurred in the main loop: {e}")
+        finally:
+            try:
+                tello.land()
+                logger.info("Tello landing command sent")
+                # Wait for the landing to complete
+                await asyncio.sleep(5)
+            except Exception as e:
+                logger.error(f"Landing failed: {e}")
         
         tello.streamoff()
         logger.info("Video stream is off.")

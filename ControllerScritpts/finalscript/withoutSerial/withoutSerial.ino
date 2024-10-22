@@ -38,9 +38,7 @@ void setup() {
   pinMode(LEDR, OUTPUT);
   pinMode(LEDG, OUTPUT);
   pinMode(LEDB, OUTPUT);
-  Serial.begin(9600);
-  while (!Serial)
-    ;
+  
 
   if (!BLE.begin()) {
     Serial.println("Starting BLE failed!");
@@ -118,7 +116,7 @@ void loop() {
               if (value == "wrong_confirmed") {
                 Serial.println("received confirmation for wrong Gesture");
               }
-              delay(500);
+              delay(1000);
             } else {
               Serial.println("Failed to send signal 2");
             }
@@ -126,9 +124,11 @@ void loop() {
           digitalWrite(LEDR, LOW);
           digitalWrite(LEDG, LOW);
           digitalWrite(LEDB, HIGH);
+          continue;
         }
       } else if (!takeoffConfirmed) {
-        // Wait for confirmation from Python script
+        landingDetected = false;
+        landingConfirmed = false;
         if (sensorCharacteristic.written()) {
           uint8_t buffer[30];
           int bytesRead = sensorCharacteristic.readValue(buffer, sizeof(buffer));
@@ -290,6 +290,8 @@ void checkLanding() {
           takeoffConfirmed = true;
           Serial.println("landing confirmed. Waiting for futher commands");
           flying = false;
+          takeoffDetected = false;
+          takeoffConfirmed = false;
           // GREEN
           digitalWrite(LEDR, HIGH);
           digitalWrite(LEDG, LOW);
